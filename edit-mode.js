@@ -49,12 +49,24 @@
     if (tx || ty) el.style.position = "relative";
   }
 
+  function getComputedTranslate(el) {
+    var t = getComputedStyle(el).transform;
+    if (!t || t === "none") return { dx: 0, dy: 0 };
+    var m = t.match(/matrix\(([^)]+)\)/);
+    if (!m) return { dx: 0, dy: 0 };
+    var parts = m[1].split(",").map(function (s) {
+      return parseFloat(s);
+    });
+    return { dx: parts[4] || 0, dy: parts[5] || 0 };
+  }
+
   function readImgStyle(el) {
+    var t = getComputedTranslate(el);
     return {
       w: parseInt(el.style.width, 10) || null,
       radius: el.style.borderRadius || "",
-      dx: parseInt((el.style.transform || "").replace(/[^\d.,-]/g, "").split(",")[0], 10) || 0,
-      dy: parseInt((el.style.transform || "").replace(/[^\d.,-]/g, "").split(",")[1], 10) || 0,
+      dx: t.dx,
+      dy: t.dy,
     };
   }
 
@@ -146,7 +158,8 @@
     imgs.forEach(function (el, i) {
       el.dataset.editType = "img";
       el.dataset.editIndex = i;
-      el.style.cursor = on ? "pointer" : "";
+      el.style.cursor = on ? "grab" : "";
+      el.style.touchAction = on ? "none" : "";
     });
 
     var bgs = document.querySelectorAll(BG_SELECTOR);
@@ -278,6 +291,10 @@
     document.addEventListener("click", function (e) {
       if (!isEditOn()) return;
       if (e.target.closest(".edit-img-toolbar")) return;
+      if (suppressNextClick) {
+        suppressNextClick = false;
+        return;
+      }
       var target = e.target.closest(IMG_SELECTOR + ", " + BG_SELECTOR);
       if (!target) {
         closeToolbar();
@@ -288,6 +305,59 @@
     });
 
     window.addEventListener("scroll", closeToolbar, true);
+  }
+
+  // --- 画像のドラッグ移動 ---
+  var suppressNextClick = false;
+  var DRAG_THRESHOLD = 4;
+
+  function attachImageDragHandlers() {
+    var drag = null;
+
+    document.addEventListener("pointerdown", function (e) {
+      if (!isEditOn()) return;
+      var target = e.target.closest(IMG_SELECTOR);
+      if (!target) return;
+      var cur = readImgStyle(target);
+      drag = {
+        el: target,
+        index: target.dataset.editIndex,
+        startX: e.clientX,
+        startY: e.clientY,
+        baseDx: cur.dx || 0,
+        baseDy: cur.dy || 0,
+        moved: false,
+        pointerId: e.pointerId,
+      };
+      target.setPointerCapture(e.pointerId);
+      target.classList.add("edit-img-dragging");
+    });
+
+    document.addEventListener("pointermove", function (e) {
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      var dx = e.clientX - drag.startX;
+      var dy = e.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      drag.moved = true;
+      closeToolbar();
+      var style = readImgStyle(drag.el);
+      style.dx = drag.baseDx + dx;
+      style.dy = drag.baseDy + dy;
+      applyImgStyle(drag.el, style);
+    });
+
+    function endDrag(e) {
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      drag.el.classList.remove("edit-img-dragging");
+      if (drag.moved) {
+        saveImgStyle(drag.el, drag.index);
+        suppressNextClick = true;
+      }
+      drag = null;
+    }
+
+    document.addEventListener("pointerup", endDrag);
+    document.addEventListener("pointercancel", endDrag);
   }
 
   function buildPanel() {
@@ -349,6 +419,7 @@
     applyEditability();
     attachTextSaveHandlers();
     attachImageClickHandlers();
+    attachImageDragHandlers();
     buildPanel();
   });
 })();

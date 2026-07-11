@@ -358,6 +358,13 @@ footer {
   color: var(--color-accent);
 }
 
+.edit-img-dragging {
+  cursor: grabbing !important;
+  opacity: 0.85;
+  outline: 2px dashed var(--color-accent);
+  outline-offset: 2px;
+}
+
 .edit-img-toolbar {
   position: absolute;
   z-index: 1001;
