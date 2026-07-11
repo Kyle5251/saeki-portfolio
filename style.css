@@ -179,12 +179,20 @@ img {
   object-fit: cover;
 }
 
+.section-thumb--small {
+  width: 160px;
+}
+
 @media (max-width: 600px) {
   .section-thumb {
     float: none;
     width: 100%;
     max-width: 320px;
     margin: 0 auto 20px;
+  }
+
+  .section-thumb--small {
+    max-width: 160px;
   }
 }
 
