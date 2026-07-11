@@ -14,6 +14,10 @@
     ".detail-section .photo-digest img, .profile-summary__photo img, .photo-grid img, " +
     ".nav-card__icon-img";
   var BG_SELECTOR = ".nav-card--photo";
+  // 縦横比を保ったまま拡大縮小したい画像（丸アイコン・バッジ系）
+  var SQUARE_SELECTOR = ".nav-card__icon-img, .photo-digest img, .profile-summary__photo img";
+
+  var RADIUS_STEPS = ["", "8px", "16px", "50%"];
 
   var pageKey = location.pathname;
   var onKey = "editModeOn";
@@ -31,6 +35,34 @@
     return "edit:" + type + ":" + pageKey + ":" + index;
   }
 
+  function applyImgStyle(el, style) {
+    if (!style) return;
+    if (style.w) {
+      el.style.width = style.w + "px";
+      if (el.matches(SQUARE_SELECTOR)) {
+        el.style.height = style.w + "px";
+      }
+    }
+    if (style.radius !== undefined) el.style.borderRadius = style.radius;
+    var tx = style.dx || 0;
+    var ty = style.dy || 0;
+    el.style.transform = "translate(" + tx + "px, " + ty + "px)";
+    if (tx || ty) el.style.position = "relative";
+  }
+
+  function readImgStyle(el) {
+    return {
+      w: parseInt(el.style.width, 10) || null,
+      radius: el.style.borderRadius || "",
+      dx: parseInt((el.style.transform || "").replace(/[^\d.,-]/g, "").split(",")[0], 10) || 0,
+      dy: parseInt((el.style.transform || "").replace(/[^\d.,-]/g, "").split(",")[1], 10) || 0,
+    };
+  }
+
+  function saveImgStyle(el, index) {
+    localStorage.setItem(storageKey("imgstyle", index), JSON.stringify(readImgStyle(el)));
+  }
+
   function restore() {
     var texts = document.querySelectorAll(TEXT_SELECTOR);
     texts.forEach(function (el, i) {
@@ -42,6 +74,14 @@
     imgs.forEach(function (el, i) {
       var saved = localStorage.getItem(storageKey("img", i));
       if (saved !== null) el.src = saved;
+      var savedStyle = localStorage.getItem(storageKey("imgstyle", i));
+      if (savedStyle) {
+        try {
+          applyImgStyle(el, JSON.parse(savedStyle));
+        } catch (err) {
+          /* ignore malformed data */
+        }
+      }
     });
 
     var bgs = document.querySelectorAll(BG_SELECTOR);
@@ -81,8 +121,8 @@
   fileInput.addEventListener("change", function () {
     if (!fileInput.files || !fileInput.files[0] || !pendingTarget) return;
     resizeImageFile(fileInput.files[0], 900, 0.85, function (dataUrl) {
-      var type = pendingTarget.dataset.editType;
-      var idx = pendingTarget.dataset.editIndex;
+      var type = pendingTarget.editType;
+      var idx = pendingTarget.editIndex;
       if (type === "bg") {
         pendingTarget.el.style.backgroundImage = "url('" + dataUrl + "')";
       } else {
@@ -114,7 +154,10 @@
     bgs.forEach(function (el, i) {
       el.dataset.editType = "bg";
       el.dataset.editIndex = i;
+      el.style.cursor = on ? "pointer" : "";
     });
+
+    if (!on) closeToolbar();
   }
 
   function attachTextSaveHandlers() {
@@ -127,21 +170,125 @@
     });
   }
 
+  // --- 画像ツールバー（サイズ・枠・位置調整） ---
+  var toolbar = null;
+  var activeImg = null;
+
+  function closeToolbar() {
+    if (toolbar) toolbar.remove();
+    toolbar = null;
+    activeImg = null;
+  }
+
+  function nudge(el, dx, dy, index) {
+    var cur = readImgStyle(el);
+    cur.dx = (cur.dx || 0) + dx;
+    cur.dy = (cur.dy || 0) + dy;
+    applyImgStyle(el, cur);
+    saveImgStyle(el, index);
+  }
+
+  function resizeBy(el, delta, index) {
+    var current = el.getBoundingClientRect().width;
+    var next = Math.max(32, Math.min(900, Math.round(current + delta)));
+    var cur = readImgStyle(el);
+    cur.w = next;
+    applyImgStyle(el, cur);
+    saveImgStyle(el, index);
+  }
+
+  function cycleRadius(el, index) {
+    var cur = readImgStyle(el);
+    var curIdx = RADIUS_STEPS.indexOf(cur.radius || "");
+    var next = RADIUS_STEPS[(curIdx + 1) % RADIUS_STEPS.length];
+    cur.radius = next;
+    applyImgStyle(el, cur);
+    saveImgStyle(el, index);
+  }
+
+  function openToolbar(el) {
+    if (!isEditOn()) return;
+    if (activeImg === el) {
+      closeToolbar();
+      return;
+    }
+    closeToolbar();
+    activeImg = el;
+    var index = el.dataset.editIndex;
+    var isBg = el.classList.contains("nav-card--photo");
+
+    toolbar = document.createElement("div");
+    toolbar.className = "edit-img-toolbar";
+    toolbar.innerHTML =
+      '<button type="button" data-act="smaller" title="縮小">－</button>' +
+      '<button type="button" data-act="bigger" title="拡大">＋</button>' +
+      '<button type="button" data-act="radius" title="枠の形を変更">枠</button>' +
+      '<button type="button" data-act="up" title="上へ">↑</button>' +
+      '<button type="button" data-act="down" title="下へ">↓</button>' +
+      '<button type="button" data-act="left" title="左へ">←</button>' +
+      '<button type="button" data-act="right" title="右へ">→</button>' +
+      '<button type="button" data-act="replace" title="画像を変更">📷</button>' +
+      '<button type="button" data-act="close" title="閉じる">✕</button>';
+    document.body.appendChild(toolbar);
+
+    function place() {
+      var rect = el.getBoundingClientRect();
+      var top = window.scrollY + rect.top - toolbar.offsetHeight - 6;
+      var left = window.scrollX + rect.left;
+      if (top < window.scrollY) top = window.scrollY + rect.bottom + 6;
+      toolbar.style.top = top + "px";
+      toolbar.style.left = left + "px";
+    }
+    place();
+
+    if (!isBg) {
+      toolbar.querySelector('[data-act="smaller"]').addEventListener("click", function () {
+        resizeBy(el, -16, index);
+        place();
+      });
+      toolbar.querySelector('[data-act="bigger"]').addEventListener("click", function () {
+        resizeBy(el, 16, index);
+        place();
+      });
+      toolbar.querySelector('[data-act="radius"]').addEventListener("click", function () {
+        cycleRadius(el, index);
+      });
+      ["up", "down", "left", "right"].forEach(function (dir) {
+        toolbar.querySelector('[data-act="' + dir + '"]').addEventListener("click", function () {
+          var step = 10;
+          var map = { up: [0, -step], down: [0, step], left: [-step, 0], right: [step, 0] };
+          nudge(el, map[dir][0], map[dir][1], index);
+          place();
+        });
+      });
+    } else {
+      ["smaller", "bigger", "radius", "up", "down", "left", "right"].forEach(function (act) {
+        var btn = toolbar.querySelector('[data-act="' + act + '"]');
+        if (btn) btn.style.display = "none";
+      });
+    }
+
+    toolbar.querySelector('[data-act="replace"]').addEventListener("click", function () {
+      pendingTarget = { el: el, editType: isBg ? "bg" : "img", editIndex: index };
+      fileInput.click();
+    });
+    toolbar.querySelector('[data-act="close"]').addEventListener("click", closeToolbar);
+  }
+
   function attachImageClickHandlers() {
     document.addEventListener("click", function (e) {
       if (!isEditOn()) return;
+      if (e.target.closest(".edit-img-toolbar")) return;
       var target = e.target.closest(IMG_SELECTOR + ", " + BG_SELECTOR);
-      if (!target) return;
+      if (!target) {
+        closeToolbar();
+        return;
+      }
       e.preventDefault();
-      pendingTarget = { el: target };
-      var isBg = target.classList.contains("nav-card--photo");
-      pendingTarget.dataset = {
-        editType: isBg ? "bg" : "img",
-        editIndex: target.dataset.editIndex,
-      };
-      pendingTarget.el.dataset.editType = isBg ? "bg" : "img";
-      fileInput.click();
+      openToolbar(target);
     });
+
+    window.addEventListener("scroll", closeToolbar, true);
   }
 
   function buildPanel() {
@@ -168,6 +315,7 @@
     });
 
     panel.querySelector('[data-action="export"]').addEventListener("click", function () {
+      closeToolbar();
       var clone = document.documentElement.cloneNode(true);
       var editPanel = clone.querySelector(".edit-panel");
       if (editPanel) editPanel.remove();

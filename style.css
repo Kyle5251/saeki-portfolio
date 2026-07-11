@@ -373,6 +373,35 @@ footer {
   color: var(--color-accent);
 }
 
+.edit-img-toolbar {
+  position: absolute;
+  z-index: 1001;
+  display: flex;
+  gap: 4px;
+  background-color: var(--color-card-bg);
+  border: 2px solid var(--color-accent);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+.edit-img-toolbar button {
+  font-family: var(--font-family);
+  font-size: 0.85rem;
+  line-height: 1;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  border-radius: 5px;
+  padding: 5px 7px;
+  cursor: pointer;
+}
+
+.edit-img-toolbar button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 @media (max-width: 900px) {
   .nav-grid {
     grid-template-columns: repeat(3, 1fr);
