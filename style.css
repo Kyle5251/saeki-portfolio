@@ -181,14 +181,25 @@ img {
 .photo-gallery {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 32px;
+}
+
+.photo-gallery figure {
+  margin: 0;
+  max-width: 640px;
 }
 
 .photo-gallery img {
   width: 100%;
-  max-width: 640px;
+  display: block;
   border-radius: 12px;
   border: 2px solid var(--color-border);
+}
+
+.photo-gallery figcaption {
+  margin-top: 10px;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
 }
 
 @media (max-width: 600px) {
